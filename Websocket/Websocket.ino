@@ -1,8 +1,8 @@
 /**
  * ESP32 Websocket Server
- * 
+ *
  * use of SPIFFS storage for static (html, js) files
- * 
+ *
  * copied/pasted from :
  * https://shawnhymel.com/1882/how-to-create-a-web-server-with-websockets-using-an-esp32-in-arduino/
  */
@@ -29,6 +29,8 @@ const int led_pin = 4;
 // Globals
 AsyncWebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(1337);
+AsyncEventSource events("/events");
+
 char msg_buf[10];
 int led_state = 0;
 int red_led_state = 0;
@@ -36,6 +38,10 @@ int red_led_state = 0;
 // Json Variable to Hold Sensor Readings
 JSONVar readings;
 
+
+// Timer variables
+unsigned long lastTime = 0;
+unsigned long timerDelay = 30000;
 /***********************************************************
  * Functions
  */
@@ -200,6 +206,15 @@ void setup() {
   // Handle requests for pages that do not exist
   server.onNotFound(onPageNotFound);
 
+  events.onConnect([](AsyncEventSourceClient *client){
+    if(client->lastId()){
+      Serial.printf("Client reconnected! Last message ID that it got is: %u\n", client->lastId());
+    }
+    // send event with message "hello!", id current millis
+    // and set reconnect delay to 1 second
+    client->send("hello!", NULL, millis(), 10000);
+  });
+  server.addHandler(&events);
   // Start web server
   server.begin();
 
@@ -213,4 +228,11 @@ void loop() {
 
   // Look for and handle WebSocket data
   webSocket.loop();
+  if ((millis() - lastTime) > timerDelay) {
+    Serial.println("Send Events to the client");
+    // Send Events to the client with the Sensor Readings Every 10 seconds
+    events.send("ping",NULL,millis());
+    events.send(getSensorReadings().c_str(),"new_readings" ,millis());
+    lastTime = millis();
+  }
 }
